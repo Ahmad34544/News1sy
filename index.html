@@ -1,0 +1,90 @@
+import logging
+import requests
+from telegram import Update, ParseMode
+from telegram.ext import Updater, CommandHandler, CallbackContext
+
+# إعداد السجل لتتبع الأحداث والأخطاء
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+# إعداد متغيرات API
+NEWS_API_KEY = '1df461df6c504250b6f54d6a8867a8b9'  # ضع مفتاح NewsAPI الخاص بك هنا
+NEWS_API_URL = 'https://newsapi.org/v2/top-headlines'
+
+def fetch_news(country='us', category='general', page_size=5):
+    """
+    دالة لجلب الأخبار من NewsAPI.
+    يمكن تعديل المعاملات: الدولة (country)، الفئة (category)، وعدد المقالات (page_size)
+    """
+    params = {
+        'apiKey': NEWS_API_KEY,
+        'country': country,
+        'category': category,
+        'pageSize': page_size
+    }
+    try:
+        response = requests.get(NEWS_API_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+        if data.get('status') == 'ok':
+            return data.get('articles', [])
+        else:
+            logger.error("خطأ في استرجاع الأخبار: %s", data)
+    except Exception as e:
+        logger.error("حدث خطأ أثناء جلب الأخبار: %s", e)
+    return None
+
+def start_command(update: Update, context: CallbackContext):
+    """
+    معالج أمر /start: يعرض رسالة ترحيبية وتعليمات بسيطة للمستخدم.
+    """
+    welcome_message = (
+        "مرحباً بك في بوت الأخبار!\n\n"
+        "استخدم الأمر /news [فئة] لجلب آخر الأخبار.\n"
+        "مثال: /news technology"
+    )
+    update.message.reply_text(welcome_message)
+
+def news_command(update: Update, context: CallbackContext):
+    """
+    معالج أمر /news:
+    - يمكن للمستخدم تمرير اسم فئة (مثل technology أو sports) كوسيط اختياري.
+    - يتم جلب الأخبار بناءً على الفئة الافتراضية (general) أو ما يُمرر.
+    """
+    category = 'general'
+    if context.args:
+        category = context.args[0]
+    articles = fetch_news(category=category)
+    if not articles:
+        update.message.reply_text("عذراً، لم أتمكن من جلب الأخبار في الوقت الحالي.")
+        return
+
+    message = f"*أحدث الأخبار في الفئة: {category}*\n\n"
+    for article in articles:
+        title = article.get('title', 'بدون عنوان')
+        url = article.get('url', '')
+        message += f"• [{title}]({url})\n"
+    
+    update.message.reply_text(message, parse_mode=ParseMode.MARKDOWN, disable_web_page_preview=True)
+
+def main():
+    # ضع توكن بوت تيليجرام الخاص بك هنا
+    TELEGRAM_TOKEN = '8028448612:AAFu9IVi8Vcg4jITh1F5d0G2KAEOIobWcWM'
+    
+    # تهيئة البوت باستخدام Updater
+    updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    # إضافة معالجات الأوامر للبوت
+    dispatcher.add_handler(CommandHandler("start", start_command))
+    dispatcher.add_handler(CommandHandler("news", news_command))
+
+    # بدء البوت (Polling)
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == '__main__':
+    main()
